@@ -1,8 +1,12 @@
 # ZumoRobot-ROS2
 
+> ⚠️ **This project is no longer maintained.** The repository is archived for reference only.
+
 **Camera-based line-following and path-mapping for the Zumo robot using ROS 2**
 
 A complete robotics stack built on ROS 2 (Python / ament_python) that enables a Zumo Shield robot to autonomously follow a black line on a white surface using a USB webcam and OpenCV, while simultaneously mapping the traversed path via wheel-encoder dead-reckoning.
+
+Developed as part of the Master's course *Autonomous Intelligent Systems* (Mechatronics & Robotics, Frankfurt UAS, WiSe 2024/2025).
 
 ![ROS Graph](zumo_robot/Video%26Gif/rosgraph.png)
 
