@@ -8,13 +8,13 @@ A complete robotics stack built on ROS 2 (Python / ament_python) that enables a 
 
 Developed as part of the Master's course *Autonomous Intelligent Systems* (Mechatronics & Robotics, Frankfurt UAS, WiSe 2024/2025).
 
-![ROS Graph](zumo_robot/Video%26Gif/rosgraph.png)
+![ROS Graph](zumo_robot/media/rosgraph.png)
 
 ---
 
 ## Demo
 
-![Demo](zumo_robot/Video%26Gif/zumorobot_test.gif)
+![Demo](zumo_robot/media/demo.gif)
 
 ---
 
@@ -103,7 +103,7 @@ source install/setup.bash
 
 1. Open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
 2. Install library dependencies via Library Manager: **ZumoShield**, **FastGPIO**.
-3. Copy `Zumo328P-Library/Zumo328P Arduino/` into your Arduino `libraries/` folder.
+3. Copy `Zumo328P-Library/library/` into your Arduino `libraries/` folder.
 4. Flash to the Arduino Uno connected to the Zumo Shield.
 
 ---
