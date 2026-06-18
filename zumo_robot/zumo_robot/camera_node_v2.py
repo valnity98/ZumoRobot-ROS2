@@ -48,11 +48,12 @@ class CameraNode(Node):
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
         if not self.cap.isOpened():
-            self.log_publisher.log(
-                "Failed to open camera. Please check the connection.",
-                level="error")
-            rclpy.shutdown()
-            return
+            self.cap.release()
+            # Raise instead of calling rclpy.shutdown() inside __init__ —
+            # shutting down the context here would cause spin() in main() to
+            # fail on an already-dead context.
+            raise RuntimeError(
+                "Failed to open camera. Please check the connection.")
 
         log_publisher.log("Camera node is on.")
         self.create_timer(TIMER_PERIOD, self.process_frame)
@@ -142,13 +143,17 @@ class CameraNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     log_publisher = LogPublisher()
-    node = CameraNode(log_publisher)
+    node = None
     try:
+        node = CameraNode(log_publisher)
         rclpy.spin(node)
+    except RuntimeError as e:
+        log_publisher.log(str(e), level="error")
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         rclpy.shutdown()
 
 

@@ -72,6 +72,9 @@ class Encoder(Node):
             if len(raw) != PACKET_SIZE or raw[0] != STX or raw[9] != ETX:
                 self.log_publisher.log(
                     "Received invalid or incomplete packet.", level="warn")
+                # Flush buffer to re-sync framing; without this every subsequent
+                # read stays misaligned and warnings loop forever.
+                self.serial_port.reset_input_buffer()
                 return
 
             right_enc = int.from_bytes(raw[1:5], byteorder='little', signed=True)
@@ -97,13 +100,15 @@ class Encoder(Node):
 def main(args=None):
     rclpy.init(args=args)
     log_publisher = LogPublisher()
-    node = Encoder(log_publisher)
+    node = None
     try:
+        node = Encoder(log_publisher)
         rclpy.spin(node)
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
     finally:
-        node.close()
+        if node is not None:
+            node.close()
         rclpy.shutdown()
 
 

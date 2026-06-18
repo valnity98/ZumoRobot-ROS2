@@ -31,7 +31,9 @@ from zumo_robot.log_node import LogPublisher
 # Robot physical constants
 WHEEL_RADIUS = 0.019     # metres
 GEAR_RATIO = 75.81
-CPR = (GEAR_RATIO * 12) / 2  # counts per rev (no XOR doubling)
+CPR = GEAR_RATIO * 12  # counts per wheel rev: 12 CPR encoder × gear ratio
+                       # A-only CHANGE interrupt gives 2 edges per encoder cycle,
+                       # but 12 CPR already counts edges not cycles — no /2 needed.
 WHEELTRACK = 0.09        # metres, axle width
 
 MAP_SIZE = 1000          # cells
@@ -86,10 +88,11 @@ class PathMappingNode(Node):
         delta_dist = (delta_left + delta_right) / 2.0
         delta_theta = (delta_right - delta_left) / WHEELTRACK
 
-        # Update pose (position stored in cell-index space)
+        # Update pose using midpoint heading to reduce systematic drift on curves.
         theta = self.current_position[2]
-        self.current_position[0] += delta_dist * math.cos(theta) / RESOLUTION
-        self.current_position[1] += delta_dist * math.sin(theta) / RESOLUTION
+        theta_mid = theta + delta_theta / 2.0
+        self.current_position[0] += delta_dist * math.cos(theta_mid) / RESOLUTION
+        self.current_position[1] += delta_dist * math.sin(theta_mid) / RESOLUTION
         self.current_position[2] = (
             (theta + delta_theta + math.pi) % (2 * math.pi) - math.pi)
 

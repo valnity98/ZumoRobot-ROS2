@@ -32,7 +32,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Int16MultiArray, Int8
 import serial
 
-from Zumo_Library.PIDController import Zumo328PPID
+from zumo_robot.pid_lib.PIDController import Zumo328PPID
 from zumo_robot.log_node import LogPublisher
 
 CTRL_NORMAL = b'\x11'
@@ -97,6 +97,9 @@ class Motors(Node):
             self.get_logger().debug("PID inactive — ignoring coordinates.")
             return
         try:
+            if len(msg.data) != 2:
+                self._send_to_arduino(0, 0, CTRL_NORMAL)
+                return
             c_x, _c_y = msg.data
             self.pid.control_speed(c_x, target_position=self.target_position)
 
@@ -157,14 +160,17 @@ class Motors(Node):
 def main(args=None):
     rclpy.init(args=args)
     log_publisher = LogPublisher()
-    node = Motors(log_publisher)
+    node = None
     try:
+        node = Motors(log_publisher)
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node._send_to_arduino(0, 0, CTRL_NORMAL)
+        if node is not None:
+            node._send_to_arduino(0, 0, CTRL_NORMAL)
         log_publisher.log("Node interrupted by user.")
     finally:
-        node.close()
+        if node is not None:
+            node.close()
         rclpy.shutdown()
 
 
