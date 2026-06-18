@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
         self.log_publisher = log_publisher
     
         # Load the UI file (located at zumo_robot/Qt/zumorobot.ui)
-        ui_path = os.path.join(os.path.dirname(__file__), '..', 'Qt', 'zumorobot.ui')
+        ui_path = os.path.join(os.path.dirname(__file__), '..', 'gui', 'zumorobot.ui')
         try:
             uic.loadUi(ui_path, self)
         except Exception as e:
@@ -166,9 +166,10 @@ class MainWindow(QMainWindow):
                 # Get image dimensions for creating QImage object
                 height, width, channel = frame.shape
                 bytes_per_line = 3 * width  # 3 bytes per pixel (RGB)
-                q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
-
-                # Set the QImage as the image source in the GUI label
+                # Use bytes() to copy frame data — QImage with raw buffer does
+                # not own the data, so frame must stay alive until fromImage() copies it.
+                q_img = QImage(bytes(frame.tobytes()), width, height,
+                               bytes_per_line, QImage.Format_RGB888)
                 self.Video_Label.setPixmap(QPixmap.fromImage(q_img))
             except CvBridgeError as e:
                 self.log_publisher.log(f"Error converting ROS image message to OpenCV: {e}", level="error")
@@ -253,7 +254,10 @@ def main():
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
     finally:
-        rclpy.shutdown()  # Ensure that ROS2 is properly shut down when done
+        # Guard against double shutdown: closeEvent() already calls rclpy.shutdown()
+        # when the window is closed normally; calling it again raises RuntimeError.
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

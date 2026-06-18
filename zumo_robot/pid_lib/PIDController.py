@@ -68,8 +68,12 @@ class Zumo328PPID:
                       + self.kd * self._filtered_derivative)
         self._last_error = error
 
-        self._left_speed = max(0.0, min(self.max_speed + speed_diff, self.max_speed))
-        self._right_speed = max(0.0, min(self.max_speed - speed_diff, self.max_speed))
+        # Allow negative speeds so the robot can counter-steer on sharp curves.
+        # Previously clamped to [0, max_speed] which removed turning authority.
+        self._left_speed = max(-self.max_speed,
+                               min(self.max_speed + speed_diff, self.max_speed))
+        self._right_speed = max(-self.max_speed,
+                                min(self.max_speed - speed_diff, self.max_speed))
 
     def get_left_speed(self):
         return self._left_speed
