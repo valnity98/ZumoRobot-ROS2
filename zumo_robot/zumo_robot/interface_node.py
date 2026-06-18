@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
         self.node = node
         self.log_publisher = log_publisher
     
-        # Load the UI file (located at zumo_robot/Qt/zumorobot.ui)
+        # Load the UI file (located at zumo_robot/gui/zumorobot.ui)
         ui_path = os.path.join(os.path.dirname(__file__), '..', 'gui', 'zumorobot.ui')
         try:
             uic.loadUi(ui_path, self)
