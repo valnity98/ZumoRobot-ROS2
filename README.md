@@ -1,16 +1,20 @@
 # ZumoRobot-ROS2
 
+> ⚠️ **This project is no longer maintained.** The repository is archived for reference only.
+
 **Camera-based line-following and path-mapping for the Zumo robot using ROS 2**
 
 A complete robotics stack built on ROS 2 (Python / ament_python) that enables a Zumo Shield robot to autonomously follow a black line on a white surface using a USB webcam and OpenCV, while simultaneously mapping the traversed path via wheel-encoder dead-reckoning.
 
-![ROS Graph](zumo_robot/Video%26Gif/rosgraph.png)
+Developed as part of the Master's course *Autonomous Intelligent Systems* (Mechatronics & Robotics, Frankfurt UAS, WiSe 2024/2025).
+
+![ROS Graph](zumo_robot/media/rosgraph.png)
 
 ---
 
 ## Demo
 
-![Demo](zumo_robot/Video%26Gif/zumorobot_test.gif)
+![Demo](zumo_robot/media/demo.gif)
 
 ---
 
@@ -82,7 +86,6 @@ sudo apt install python3-pip python3-opencv python3-pyqt5 \
                  ros-$ROS_DISTRO-tf2-ros \
                  ros-$ROS_DISTRO-rviz2
 sudo apt remove brltty   # conflicts with /dev/ttyUSB0 on Ubuntu 22.04
-pip install pyserial simple-pid
 ```
 
 ### 2. Clone and build
@@ -99,7 +102,7 @@ source install/setup.bash
 
 1. Open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
 2. Install library dependencies via Library Manager: **ZumoShield**, **FastGPIO**.
-3. Copy `Zumo328P-Library/Zumo328P Arduino/` into your Arduino `libraries/` folder.
+3. Copy `Zumo328P-Library/library/` into your Arduino `libraries/` folder.
 4. Flash to the Arduino Uno connected to the Zumo Shield.
 
 ---
