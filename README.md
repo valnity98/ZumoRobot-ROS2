@@ -86,7 +86,6 @@ sudo apt install python3-pip python3-opencv python3-pyqt5 \
                  ros-$ROS_DISTRO-tf2-ros \
                  ros-$ROS_DISTRO-rviz2
 sudo apt remove brltty   # conflicts with /dev/ttyUSB0 on Ubuntu 22.04
-pip install pyserial simple-pid
 ```
 
 ### 2. Clone and build
