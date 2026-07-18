@@ -2,6 +2,8 @@
 
 > ⚠️ **This project is no longer maintained.** The repository is archived for reference only.
 
+> ⚠️ **This project is also related with Self-coded library for Arduino Leonardo for encoder control.** https://github.com/valnity98/Zumo328P-Library
+
 **Camera-based line-following and path-mapping for the Zumo robot using ROS 2**
 
 A complete robotics stack built on ROS 2 (Python / ament_python) that enables a Zumo Shield robot to autonomously follow a black line on a white surface using a USB webcam and OpenCV, while simultaneously mapping the traversed path via wheel-encoder dead-reckoning.
@@ -9,6 +11,7 @@ A complete robotics stack built on ROS 2 (Python / ament_python) that enables a 
 Developed as part of the Master's course *Autonomous Intelligent Systems* (Mechatronics & Robotics, Frankfurt UAS, WiSe 2024/2025).
 
 ![ROS Graph](zumo_robot/media/rosgraph.png)
+
 
 ---
 
@@ -59,7 +62,7 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 | Component | Details |
 |---|---|
 | Zumo Shield for Arduino v1.2 | Base platform with DC motors |
-| Arduino Uno (ATmega328P) | Motor control and encoder reading |
+| Arduino leonardo (ATmega328P) | Motor control and encoder reading |
 | Magnetic encoder pair | Pololu #3081 — 12 CPR, 2.7–18 V (external, mounted manually) |
 | USB webcam | Any Linux-compatible UVC camera |
 | Linux PC | Runs ROS 2 nodes |
@@ -103,7 +106,7 @@ source install/setup.bash
 1. Open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
 2. Install library dependencies via Library Manager: **ZumoShield**, **FastGPIO**.
 3. Copy `Zumo328P-Library/library/` into your Arduino `libraries/` folder.
-4. Flash to the Arduino Uno connected to the Zumo Shield.
+4. Flash to the Arduino leonardo connected to the Zumo Shield.
 
 ---
 
