@@ -1,8 +1,8 @@
 # ZumoRobot-ROS2
 
-> ⚠️ **This project is no longer maintained.** The repository is archived for reference only.
+> **Status: completed.** University project (WiSe 2024/25), kept as a reference implementation.
 
-> ⚠️ **This project is also related with Self-coded library for Arduino Leonardo for encoder control.** https://github.com/valnity98/Zumo328P-Library
+> **Related:** self-written encoder/PID library for the Arduino Leonardo — [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library)
 
 **Camera-based line-following and path-mapping for the Zumo robot using ROS 2**
 
@@ -25,12 +25,12 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 
 | Feature | Description |
 |---|---|
-| **Line detection** | HSV thresholding → contour analysis across 5 image sections; Kalman filter smoothing |
+| **Line detection** | Grayscale threshold → contour analysis across 5 image sections; Kalman-filtered centroid shown in the debug overlay |
 | **PID motor control** | Discrete-time PID with anti-windup, derivative low-pass filter; configurable via ROS parameters |
 | **Encoder odometry** | Dead-reckoning from quadrature encoder ticks; publishes `Pose` and `OccupancyGrid` |
 | **TF2 broadcasting** | `map → base_link` transform published for RViz visualisation |
 | **Qt GUI** | PyQt5 dashboard: live video, encoder values, motor speeds, pose, log |
-| **Custom Arduino library** | Ported Zumo encoder library for ATmega328P with interrupt-driven counting |
+| **Custom Arduino library** | Ported Zumo encoder library for the Arduino Leonardo (ATmega32U4) with interrupt-driven counting |
 
 ---
 
@@ -62,7 +62,7 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 | Component | Details |
 |---|---|
 | Zumo Shield for Arduino v1.2 | Base platform with DC motors |
-| Arduino leonardo (ATmega328P) | Motor control and encoder reading |
+| Arduino Leonardo (ATmega32U4) | Motor control and encoder reading |
 | Magnetic encoder pair | Pololu #3081 — 12 CPR, 2.7–18 V (external, mounted manually) |
 | USB webcam | Any Linux-compatible UVC camera |
 | Linux PC | Runs ROS 2 nodes |
@@ -95,7 +95,7 @@ sudo apt remove brltty   # conflicts with /dev/ttyUSB0 on Ubuntu 22.04
 
 ```bash
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
-git clone https://github.com/<your-user>/ZumoRobot-ROS2.git
+git clone https://github.com/valnity98/ZumoRobot-ROS2.git
 cd ~/ros2_ws
 colcon build --packages-select zumo_robot
 source install/setup.bash
@@ -103,10 +103,10 @@ source install/setup.bash
 
 ### 3. Flash the Arduino firmware
 
-1. Open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
+1. Clone [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library) and open `example/ZumoRos2.ino` in the Arduino IDE.
 2. Install library dependencies via Library Manager: **ZumoShield**, **FastGPIO**.
-3. Copy `Zumo328P-Library/library/` into your Arduino `libraries/` folder.
-4. Flash to the Arduino leonardo connected to the Zumo Shield.
+3. Copy its `library/` folder into your Arduino `libraries/` folder.
+4. Flash to the Arduino Leonardo connected to the Zumo Shield.
 
 ---
 
