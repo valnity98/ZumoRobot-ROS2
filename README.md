@@ -230,6 +230,16 @@ All multi-byte values are little-endian signed integers.
 
 ---
 
+## Known limitations
+
+- **No command timeout.** The robot only stops on an explicit stop command. If the camera finds no line, or the PC side stops (node crash, USB cable pulled), no new command arrives and the Arduino keeps driving at the last commanded speed. Use the **Stop** button (`robot_command` `0`) or cut the power.
+- **Reverse driving is not verified.** On the ATmega32U4 the sketch drives the motors through `Zumo32U4Motors`, whose direction pins differ from those of the Zumo Shield v1.2 (see the [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library)). With the default gains the controller practically never commands negative speeds, so this path is not exercised.
+- **Odometry constants are nominal.** `CPR` and `WHEEL_RADIUS` have not been calibrated on the robot (see [Calibration](#calibration)), so distances in the map are approximate.
+- **Encoder data follows the motor commands.** The Arduino only replies with encoder values to motor packets, so the odometry rate follows the camera and pauses while no line is detected.
+- **The serial protocol has no checksum.** Frames are recognised by their fixed length and the `0x02`/`0x03` markers only.
+
+---
+
 ## Contributors
 
 | Name | Role |
