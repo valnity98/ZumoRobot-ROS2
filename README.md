@@ -37,23 +37,36 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 ## Architecture
 
 ```
-┌─────────────┐    line_coordinates    ┌──────────────┐   serial   ┌──────────┐
-│ camera_node │ ─────────────────────► │ motors_node  │ ─────────► │ Arduino  │
-└─────────────┘                        └──────────────┘            └──────────┘
-       │ camera_topic                         ▲                          │ serial
-       ▼                                      │ robot_command            ▼
-┌──────────────┐                      ┌───────────────┐          ┌──────────────┐
-│ interface    │ ◄────────────────────│ encoder_node  │ ◄────────│ Arduino      │
-│ (Qt GUI)     │    encoder_data /    └───────────────┘          └──────────────┘
-└──────────────┘    motor_speeds /          │ encoder_data
-                    robot_position /        ▼
-                    log_messages    ┌────────────────────┐
-                                    │ path_mapping_node  │ ── robot_position ──► tf2_node
-                                    └────────────────────┘
-                                           │ path_map / visualization_marker
-                                           ▼
-                                         RViz2
+┌────────────────┐                     ┌───────────────────┐
+│                │◄─ camera_topic ─────┤ camera_node       │
+│                │◄─ line_coordinates ─┤                   │
+│                │                     └─────────┬─────────┘
+│                │                               ▼ line_coordinates
+│                │                     ┌───────────────────┐
+│                ├─ robot_command ────►│ motors_node       │
+│                │◄─ motor_speeds ─────┤                   │
+│                │                     └─────────┬─────────┘
+│ interface_node │                               ▼ serial (speeds)
+│    (Qt GUI)    │                     ┌───────────────────┐
+│                │                     │ Arduino           │
+│                │                     └─────────┬─────────┘
+│                │                               ▼ serial (encoder packets)
+│                │                     ┌───────────────────┐
+│                │◄─ encoder_data ─────┤ encoder_node      │
+│                │                     └─────────┬─────────┘
+│                │                               ▼ encoder_data
+│                │                     ┌───────────────────┐
+│                ├─ robot_command ────►│ path_mapping_node │
+│                │◄─ robot_position ───┤                   │
+└────────────────┘                     └──┬──────────────┬─┘
+                           robot_position │              │ path_map,
+                                          ▼              ▼ visualization_marker
+                                    ┌──────────┐     ┌───────┐
+                                    │ tf2_node ├─TF─►│ RViz2 │
+                                    └──────────┘     └───────┘
 ```
+
+All nodes also publish status messages on `log_messages`, which the GUI shows in its log window.
 
 ---
 
@@ -84,7 +97,7 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 
 ```bash
 sudo apt update
-sudo apt install python3-pip python3-opencv python3-pyqt5 \
+sudo apt install python3-pip python3-opencv python3-pyqt5 python3-serial \
                  ros-$ROS_DISTRO-cv-bridge \
                  ros-$ROS_DISTRO-tf2-ros \
                  ros-$ROS_DISTRO-rviz2
@@ -96,6 +109,7 @@ sudo apt remove brltty   # conflicts with /dev/ttyUSB0 on Ubuntu 22.04
 ```bash
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
 git clone https://github.com/valnity98/ZumoRobot-ROS2.git
+rosdep install --from-paths . --ignore-src -r -y   # optional: install the dependencies declared in package.xml
 cd ~/ros2_ws
 colcon build --packages-select zumo_robot
 source install/setup.bash
@@ -103,8 +117,8 @@ source install/setup.bash
 
 ### 3. Flash the Arduino firmware
 
-1. Clone [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library) and open `example/ZumoRos2.ino` in the Arduino IDE.
-2. Install library dependencies via Library Manager: **ZumoShield**, **FastGPIO**.
+1. Clone [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library) and open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
+2. Install library dependencies via Library Manager: **Zumo32U4** (used by the sketch on the ATmega32U4) and **FastGPIO**. **ZumoShield** is only needed when building for an ATmega328P.
 3. Copy its `library/` folder into your Arduino `libraries/` folder.
 4. Flash to the Arduino Leonardo connected to the Zumo Shield.
 
@@ -131,6 +145,18 @@ Example with custom port:
 ros2 launch zumo_robot launch_zumo.py serial_port:=/dev/ttyACM0
 ```
 
+An Arduino Leonardo (ATmega32U4) shows up as `/dev/ttyACM0`, a USB-serial adapter as `/dev/ttyUSB0` (the default). Check which one your system created (e.g. with `ls /dev/ttyACM* /dev/ttyUSB*`) and set `serial_port` accordingly.
+
+### Start the robot
+
+The robot only drives after it has received the start command: press **Start** in the GUI, or send it from a terminal:
+
+```bash
+ros2 topic pub --once /robot_command std_msgs/msg/Int8 "{data: 1}"
+```
+
+`0` stops the robot, `2` resets the encoders and the odometry (see the `robot_command` topic below).
+
 ### Run individual nodes
 
 ```bash
@@ -140,6 +166,13 @@ ros2 run zumo_robot motors_node  --ros-args -p target_position:=320
 ros2 run zumo_robot path_mapping_node
 ros2 run zumo_robot interface_node
 ```
+
+### Calibration
+
+The odometry constants at the top of `zumo_robot/zumo_robot/path_node.py` are not measured for every robot. Check `CPR` and `WHEEL_RADIUS` on yours and rebuild after changing them:
+
+- **`CPR`** (encoder counts per wheel revolution, currently `75.81 × 12`): Pololu's 12 CPR applies when both edges of both encoder channels are counted, but the Arduino library only counts the edges of channel A. Send reset (`{data: 2}`), turn one wheel by hand exactly one revolution, send stop once (`{data: 0}`, the Arduino only reports encoder values in reply to motor packets) and read the tick count with `ros2 topic echo /encoder_data`. That count is the value for `CPR`.
+- **`WHEEL_RADIUS`** (currently `0.019` m): with `CPR` calibrated, reset, drive a straight 1 m and compare the distance reported in `robot_position` (metres from the start) with 1 m. Adjust `WHEEL_RADIUS` until they match.
 
 ---
 
@@ -156,7 +189,7 @@ ros2 run zumo_robot interface_node
 | `robot_position` | `geometry_msgs/Pose` | path → tf2/GUI | Dead-reckoning pose |
 | `path_map` | `nav_msgs/OccupancyGrid` | path → RViz | Visited-cell map |
 | `visualization_marker` | `visualization_msgs/Marker` | path → RViz | Path LINE_STRIP |
-| `robot_command` | `Int8` | GUI → motors | 0=stop, 1=start, 2=reset |
+| `robot_command` | `Int8` | GUI → motors, path | 0=stop, 1=start, 2=reset (Arduino encoders and odometry) |
 | `log_messages` | `std_msgs/String` | all → GUI | Status log |
 
 ### Parameters (motors_node)
@@ -169,6 +202,15 @@ ros2 run zumo_robot interface_node
 | `ki` | float | `0.10` | PID integral gain |
 | `kd` | float | `0.10` | PID derivative gain |
 | `max_speed` | float | `125.0` | Base motor speed |
+
+`motors_node` always opens the serial port at 115200 baud (not configurable).
+
+### Parameters (encoder_node)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `serial_port` | string | `/dev/ttyUSB0` | Arduino port |
+| `baudrate` | int | `115200` | Serial baud rate (must match the sketch, which uses 115200) |
 
 ---
 
