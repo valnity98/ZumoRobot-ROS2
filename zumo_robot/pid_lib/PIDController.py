@@ -8,7 +8,7 @@ the measured centroid and the target centre position.
 
 Usage:
     pid = Zumo328PPID(kp=0.35, ki=0.1, kd=0.1, max_speed=125.0)
-    pid.control_speed(measured_position, target_position=334)
+    pid.control_speed(measured_position, target_position=320)
     left  = pid.get_left_speed()
     right = pid.get_right_speed()
 """
@@ -69,7 +69,6 @@ class Zumo328PPID:
         self._last_error = error
 
         # Allow negative speeds so the robot can counter-steer on sharp curves.
-        # Previously clamped to [0, max_speed] which removed turning authority.
         self._left_speed = max(-self.max_speed,
                                min(self.max_speed + speed_diff, self.max_speed))
         self._right_speed = max(-self.max_speed,

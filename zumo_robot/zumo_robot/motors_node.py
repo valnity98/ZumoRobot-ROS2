@@ -32,7 +32,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Int16MultiArray, Int8
 import serial
 
-from zumo_robot.pid_lib.PIDController import Zumo328PPID
+from pid_lib.PIDController import Zumo328PPID
 from zumo_robot.log_node import LogPublisher
 
 CTRL_NORMAL = b'\x11'

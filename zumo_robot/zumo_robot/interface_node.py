@@ -23,6 +23,8 @@ from collections import defaultdict
 from time import time
 
 import rclpy
+from ament_index_python.packages import (
+    PackageNotFoundError, get_package_share_directory)
 from rclpy.node import Node
 
 from std_msgs.msg import Int32MultiArray, Float32MultiArray, Int16MultiArray, String, Int8
@@ -40,6 +42,24 @@ from PyQt5.QtCore import QVariant
 
 from zumo_robot.log_node import LogPublisher
 
+
+def find_ui_file():
+    """Returns the path of zumorobot.ui.
+
+    Prefers the installed copy (share/zumo_robot/gui, installed via setup.py)
+    and falls back to the source tree if the package is not found in the
+    ament index or the file is missing there (e.g. a plain `python` run).
+    The window icon (gui/ICON/...) is referenced relative to the .ui file by
+    uic, so it is found next to whichever copy is returned.
+    """
+    try:
+        share_ui = os.path.join(
+            get_package_share_directory('zumo_robot'), 'gui', 'zumorobot.ui')
+        if os.path.isfile(share_ui):
+            return share_ui
+    except PackageNotFoundError:
+        pass
+    return os.path.join(os.path.dirname(__file__), '..', 'gui', 'zumorobot.ui')
 
 
 class ROS2Thread(QtCore.QThread):
@@ -71,8 +91,9 @@ class MainWindow(QMainWindow):
         self.node = node
         self.log_publisher = log_publisher
     
-        # Load the UI file (located at zumo_robot/gui/zumorobot.ui)
-        ui_path = os.path.join(os.path.dirname(__file__), '..', 'gui', 'zumorobot.ui')
+        # Load the UI file (installed to share/zumo_robot/gui/zumorobot.ui,
+        # source copy: zumo_robot/gui/zumorobot.ui)
+        ui_path = find_ui_file()
         try:
             uic.loadUi(ui_path, self)
         except Exception as e:

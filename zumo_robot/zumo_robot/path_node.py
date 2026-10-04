@@ -9,6 +9,7 @@ robot's 2-D pose on an OccupancyGrid and visualise it in RViz.
 
 Subscribes:
     encoder_data  (Int32MultiArray)  [left_ticks, right_ticks]
+    robot_command (Int8)             2 = reset pose, map and path
 
 Publishes:
     robot_position      (Pose)           current pose in map frame
@@ -23,7 +24,7 @@ import rclpy
 from geometry_msgs.msg import Point, Pose
 from nav_msgs.msg import OccupancyGrid
 from rclpy.node import Node
-from std_msgs.msg import Int32MultiArray
+from std_msgs.msg import Int8, Int32MultiArray
 from visualization_msgs.msg import Marker
 
 from zumo_robot.log_node import LogPublisher
@@ -32,12 +33,17 @@ from zumo_robot.log_node import LogPublisher
 WHEEL_RADIUS = 0.019     # metres
 GEAR_RATIO = 75.81
 CPR = GEAR_RATIO * 12  # counts per wheel rev: 12 CPR encoder × gear ratio
-                       # A-only CHANGE interrupt gives 2 edges per encoder cycle,
-                       # but 12 CPR already counts edges not cycles — no /2 needed.
+                       # Pololu's 12 CPR holds when both edges of both encoder
+                       # channels are counted; the Arduino library counts only
+                       # the edges of channel A. Calibrate the real value by
+                       # turning a wheel exactly one revolution and reading the
+                       # ticks (see README of the Zumo328P-Library).
 WHEELTRACK = 0.09        # metres, axle width
 
 MAP_SIZE = 1000          # cells
 RESOLUTION = 0.01        # metres per cell
+
+CMD_RESET = 2            # robot_command value "reset" (see motors_node)
 
 
 class PathMappingNode(Node):
@@ -49,6 +55,8 @@ class PathMappingNode(Node):
 
         self.create_subscription(
             Int32MultiArray, 'encoder_data', self.encoder_callback, 10)
+        self.create_subscription(
+            Int8, 'robot_command', self.command_callback, 10)
 
         self.position_pub = self.create_publisher(Pose, 'robot_position', 10)
         self.map_pub = self.create_publisher(OccupancyGrid, 'path_map', 10)
@@ -64,9 +72,38 @@ class PathMappingNode(Node):
 
         self.prev_left = 0
         self.prev_right = 0
+        self._rebase = False  # see command_callback
 
         # Ordered list of visited cells — avoids O(N²) argwhere on every tick
         self._path_points: list[tuple[int, int]] = []
+
+    def command_callback(self, msg):
+        """Reset pose, map and path when the GUI sends the reset command."""
+        if msg.data != CMD_RESET:
+            return
+
+        # motors_node makes the Arduino zero its tick counters, but that goes
+        # over serial, so the next encoder packet may still carry the old
+        # counts (or the Arduino may not have zeroed at all). Assuming
+        # prev_left/prev_right = 0 would turn such a packet into a jump by the
+        # whole old tick count. Instead the next packet only becomes the new
+        # baseline (_rebase); no distance is integrated from it.
+        # Limitation: if that packet is a stale one and the Arduino zeroes
+        # afterwards, the packet after it shows one step back by the old count.
+        # Stop -> Reset -> Start avoids this: the Arduino only replies to motor
+        # packets, so no stale reply is in flight when the robot is stopped.
+        self.prev_left = 0
+        self.prev_right = 0
+        self._rebase = True
+
+        # Same start state as in __init__
+        self.current_position = [MAP_SIZE / 2.0, MAP_SIZE / 2.0, 0.0]
+        self.map_data.fill(-1)
+        self._path_points.clear()
+
+        self._publish_position()
+        self._publish_map()
+        self._visualize_path()
 
     def encoder_callback(self, msg):
         if len(msg.data) != 2:
@@ -75,6 +112,12 @@ class PathMappingNode(Node):
             return
 
         left_enc, right_enc = msg.data
+
+        if self._rebase:
+            # First packet after a reset: new zero point, no distance from it.
+            self.prev_left = left_enc
+            self.prev_right = right_enc
+            self._rebase = False
 
         ticks_left = left_enc - self.prev_left
         ticks_right = right_enc - self.prev_right

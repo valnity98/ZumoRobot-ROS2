@@ -11,6 +11,10 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/launch_zumo.py']),
+        # Qt GUI: .ui file plus the window icon it references (gui/ICON/...)
+        ('share/' + package_name + '/gui', ['gui/zumorobot.ui']),
+        ('share/' + package_name + '/gui/ICON',
+            ['gui/ICON/mobile-robot-icon.svg']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

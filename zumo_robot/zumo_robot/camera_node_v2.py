@@ -6,10 +6,13 @@ Authors: Mutasem Bader, Felix Biermann
 
 Captures frames from a webcam, detects a dark line via thresholding/contour
 analysis across five horizontal image sections, and publishes:
-  - Float32MultiArray on 'line_coordinates'  (weighted centroid x, mean y)
+  - Float32MultiArray on 'line_coordinates'  (weighted centroid x, mean y;
+                                              unfiltered)
   - Image              on 'camera_topic'      (annotated frame)
 
-A 1-D Kalman filter smooths the lateral centroid estimate.
+A 1-D Kalman filter runs on the centroid x for the debug overlay only (green
+dot in the annotated frame). The value published on 'line_coordinates' is the
+unfiltered weighted centroid, not the Kalman estimate.
 """
 
 import rclpy
@@ -115,7 +118,7 @@ class CameraNode(Node):
 
                 msg = Float32MultiArray(data=[float(avg_cx), float(avg_cy)])
                 self.publisher_coordinates.publish(msg)
-                self.get_logger().info(
+                self.get_logger().debug(
                     f"Published coordinates: cx={avg_cx}, cy={avg_cy}")
 
                 cv2.circle(frame, (avg_cx, avg_cy), 10, (255, 0, 0), -1)
