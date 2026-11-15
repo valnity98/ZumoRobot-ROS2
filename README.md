@@ -1,25 +1,12 @@
 # ZumoRobot-ROS2
 
-> **Status: completed.** University project (WiSe 2024/25), kept as a reference implementation.
-
-> **Related:** self-written encoder/PID library for the Arduino Leonardo — [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library)
-
-**Camera-based line-following and path-mapping for the Zumo robot using ROS 2**
-
-A complete robotics stack built on ROS 2 (Python / ament_python) that enables a Zumo Shield robot to autonomously follow a black line on a white surface using a USB webcam and OpenCV, while simultaneously mapping the traversed path via wheel-encoder dead-reckoning.
-
-Developed as part of the Master's course *Autonomous Intelligent Systems* (Mechatronics & Robotics, Frankfurt UAS, WiSe 2024/2025).
-
-![ROS Graph](zumo_robot/media/rosgraph.png)
-
-
----
-
-## Demo
+A Zumo robot that follows a black line with a USB webcam and draws a map of the path it has driven. Everything on the PC side runs on ROS 2 (Python, ament_python).
 
 ![Demo](zumo_robot/media/demo.gif)
 
----
+The camera node finds the line with OpenCV, a PID controller turns the line position into motor speeds, and the wheel encoders give the position for the map (dead reckoning).
+
+Team project in the master's course *Autonomous Intelligent Systems* at Frankfurt UAS (winter semester 2024/25). The project is finished. The encoder library on the Arduino side is in a separate repository: [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library).
 
 ## Features
 
@@ -31,8 +18,6 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 | **TF2 broadcasting** | `map → base_link` transform published for RViz visualisation |
 | **Qt GUI** | PyQt5 dashboard: live video, encoder values, motor speeds, pose, log |
 | **Custom Arduino library** | Ported Zumo encoder library for the Arduino Leonardo (ATmega32U4) with interrupt-driven counting |
-
----
 
 ## Architecture
 
@@ -68,7 +53,9 @@ Developed as part of the Master's course *Autonomous Intelligent Systems* (Mecha
 
 All nodes also publish status messages on `log_messages`, which the GUI shows in its log window.
 
----
+The same structure as a ROS graph:
+
+![ROS graph](zumo_robot/media/rosgraph.png)
 
 ## Hardware Requirements
 
@@ -76,20 +63,16 @@ All nodes also publish status messages on `log_messages`, which the GUI shows in
 |---|---|
 | Zumo Shield for Arduino v1.2 | Base platform with DC motors |
 | Arduino Leonardo (ATmega32U4) | Motor control and encoder reading |
-| Magnetic encoder pair | Pololu #3081 — 12 CPR, 2.7–18 V (external, mounted manually) |
+| Magnetic encoder pair | Pololu #3081, 12 CPR, 2.7–18 V (external, mounted manually) |
 | USB webcam | Any Linux-compatible UVC camera |
 | Linux PC | Runs ROS 2 nodes |
 | Track | Black line on white background, ≥ 2 cm width |
-
----
 
 ## Software Requirements
 
 - **ROS 2** Humble or Jazzy (Ubuntu 22.04 / 24.04)
 - Python 3.10+
 - Arduino IDE ≥ 2.0
-
----
 
 ## Installation
 
@@ -121,8 +104,6 @@ source install/setup.bash
 2. Install library dependencies via Library Manager: **Zumo32U4** (used by the sketch on the ATmega32U4) and **FastGPIO**. **ZumoShield** is only needed when building for an ATmega328P.
 3. Copy its `library/` folder into your Arduino `libraries/` folder.
 4. Flash to the Arduino Leonardo connected to the Zumo Shield.
-
----
 
 ## Usage
 
@@ -174,8 +155,6 @@ The odometry constants at the top of `zumo_robot/zumo_robot/path_node.py` are no
 - **`CPR`** (encoder counts per wheel revolution, currently `75.81 × 12`): Pololu's 12 CPR applies when both edges of both encoder channels are counted, but the Arduino library only counts the edges of channel A. Send reset (`{data: 2}`), turn one wheel by hand exactly one revolution, send stop once (`{data: 0}`, the Arduino only reports encoder values in reply to motor packets) and read the tick count with `ros2 topic echo /encoder_data`. That count is the value for `CPR`.
 - **`WHEEL_RADIUS`** (currently `0.019` m): with `CPR` calibrated, reset, drive a straight 1 m and compare the distance reported in `robot_position` (metres from the start) with 1 m. Adjust `WHEEL_RADIUS` until they match.
 
----
-
 ## ROS 2 Interface
 
 ### Topics
@@ -212,8 +191,6 @@ The odometry constants at the top of `zumo_robot/zumo_robot/path_node.py` are no
 | `serial_port` | string | `/dev/ttyUSB0` | Arduino port |
 | `baudrate` | int | `115200` | Serial baud rate (must match the sketch, which uses 115200) |
 
----
-
 ## Serial Protocol (PC ↔ Arduino)
 
 **PC → Arduino (7 bytes):**
@@ -228,8 +205,6 @@ The odometry constants at the top of `zumo_robot/zumo_robot/path_node.py` are no
 ```
 All multi-byte values are little-endian signed integers.
 
----
-
 ## Known limitations
 
 - **No command timeout.** The robot only stops on an explicit stop command. If the camera finds no line, or the PC side stops (node crash, USB cable pulled), no new command arrives and the Arduino keeps driving at the last commanded speed. Use the **Stop** button (`robot_command` `0`) or cut the power.
@@ -238,19 +213,15 @@ All multi-byte values are little-endian signed integers.
 - **Encoder data follows the motor commands.** The Arduino only replies with encoder values to motor packets, so the odometry rate follows the camera and pauses while no line is detected.
 - **The serial protocol has no checksum.** Frames are recognised by their fixed length and the `0x02`/`0x03` markers only.
 
----
-
-## Contributors
+## Team
 
 | Name | Role |
 |---|---|
 | Mutasem Bader | ROS 2 nodes, PID control, path mapping, Qt GUI, system integration |
 | Felix Fritz Biermann | Image processing (camera node) |
 
----
-
 ## License
 
-Copyright (c) 2026 Mutasem Bader — All Rights Reserved.  
+Copyright (c) 2026 Mutasem Bader. All rights reserved.  
 Viewing is permitted. Copying, modifying, or submitting as own work is strictly prohibited.  
 See [LICENSE](LICENSE) for details.
