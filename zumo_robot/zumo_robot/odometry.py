@@ -12,14 +12,17 @@ installation (see test/test_odometry.py). path_node uses these functions.
 import math
 
 # Robot physical constants
+# Estimate: the treads of the Zumo chassis are 39 mm high (Pololu), the
+# effective rolling radius is somewhat smaller. Calibrate it with a drive test.
 WHEEL_RADIUS = 0.019     # metres
 GEAR_RATIO = 75.81
-# Counts per wheel revolution: 12 CPR encoder × gear ratio. Pololu's 12 CPR
-# holds when both edges of both encoder channels are counted; the Arduino
-# library counts only the edges of channel A. Calibrate the real value by
-# turning a wheel exactly one revolution and reading the ticks (see README of
-# the Zumo328P-Library).
-CPR = GEAR_RATIO * 12
+# Counts per wheel revolution. Pololu's 12 CPR holds when both edges of both
+# encoder channels are counted. The Zumo328P-Library counts only the edges of
+# channel A, which is half of that: 6 counts per motor revolution. Calibrate
+# the real value by turning a wheel exactly one revolution and reading the
+# ticks (see the README).
+COUNTS_PER_MOTOR_REV = 6
+CPR = GEAR_RATIO * COUNTS_PER_MOTOR_REV
 WHEELTRACK = 0.09        # metres, axle width
 
 

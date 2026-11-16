@@ -19,6 +19,10 @@ class TestDeadReckoning(unittest.TestCase):
             odometry.ticks_to_metres(odometry.CPR),
             2 * math.pi * odometry.WHEEL_RADIUS)
 
+    def test_cpr_matches_the_arduino_library(self):
+        """The library counts the edges of channel A only: 6 per motor turn."""
+        self.assertAlmostEqual(odometry.CPR, 75.81 * 6)
+
     def test_no_ticks_no_movement(self):
         """Without ticks the pose stays as it is."""
         self.assertEqual(odometry.integrate(1.0, 2.0, 0.5, 0, 0),
