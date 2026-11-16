@@ -23,22 +23,15 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import Point, Pose
 from nav_msgs.msg import OccupancyGrid
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Int8, Int32MultiArray
 from visualization_msgs.msg import Marker
 
+from zumo_robot import odometry
 from zumo_robot.log_node import LogPublisher
 
-# Robot physical constants
-WHEEL_RADIUS = 0.019     # metres
-GEAR_RATIO = 75.81
-CPR = GEAR_RATIO * 12  # counts per wheel rev: 12 CPR encoder × gear ratio
-                       # Pololu's 12 CPR holds when both edges of both encoder
-                       # channels are counted; the Arduino library counts only
-                       # the edges of channel A. Calibrate the real value by
-                       # turning a wheel exactly one revolution and reading the
-                       # ticks (see README of the Zumo328P-Library).
-WHEELTRACK = 0.09        # metres, axle width
+# The robot constants (WHEEL_RADIUS, CPR, WHEELTRACK) are in odometry.py.
 
 MAP_SIZE = 1000          # cells
 RESOLUTION = 0.01        # metres per cell
@@ -124,26 +117,19 @@ class PathMappingNode(Node):
         self.prev_left = left_enc
         self.prev_right = right_enc
 
-        # Convert ticks → metres
-        delta_left = (ticks_left / CPR) * (2 * math.pi * WHEEL_RADIUS)
-        delta_right = (ticks_right / CPR) * (2 * math.pi * WHEEL_RADIUS)
-
-        delta_dist = (delta_left + delta_right) / 2.0
-        delta_theta = (delta_right - delta_left) / WHEELTRACK
-
-        # Update pose using midpoint heading to reduce systematic drift on curves.
-        theta = self.current_position[2]
-        theta_mid = theta + delta_theta / 2.0
-        self.current_position[0] += delta_dist * math.cos(theta_mid) / RESOLUTION
-        self.current_position[1] += delta_dist * math.sin(theta_mid) / RESOLUTION
-        self.current_position[2] = (
-            (theta + delta_theta + math.pi) % (2 * math.pi) - math.pi)
+        # The pose is kept in map cells, the odometry works in metres.
+        x, y, theta = odometry.integrate(
+            self.current_position[0] * RESOLUTION,
+            self.current_position[1] * RESOLUTION,
+            self.current_position[2],
+            ticks_left, ticks_right)
 
         # Clamp to map boundaries
         self.current_position[0] = max(
-            0.0, min(MAP_SIZE - 1, self.current_position[0]))
+            0.0, min(MAP_SIZE - 1, x / RESOLUTION))
         self.current_position[1] = max(
-            0.0, min(MAP_SIZE - 1, self.current_position[1]))
+            0.0, min(MAP_SIZE - 1, y / RESOLUTION))
+        self.current_position[2] = theta
 
         self.get_logger().debug(
             f"Pose: x={self.current_position[0]:.1f} "
@@ -218,8 +204,12 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
+    except ExternalShutdownException:
+        pass
     finally:
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

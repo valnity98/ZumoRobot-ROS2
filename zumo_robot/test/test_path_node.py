@@ -1,78 +1,96 @@
 #!/usr/bin/env python3
 
-"""Unit tests for PathMappingNode dead-reckoning and map logic."""
+"""Unit tests for the dead-reckoning maths and the path-point bookkeeping."""
 
 import math
 import unittest
 
 import numpy as np
 
+from zumo_robot import odometry
+
 
 class TestDeadReckoning(unittest.TestCase):
-    """Tests for odometry maths — no ROS runtime required."""
+    """Tests for zumo_robot.odometry (no ROS runtime required)."""
 
-    # Mirror constants from path_node
-    WHEEL_RADIUS = 0.019
-    GEAR_RATIO = 75.81
-    CPR = (GEAR_RATIO * 12) / 2
-    WHEELTRACK = 0.09
-    MAP_SIZE = 1000
-    RESOLUTION = 0.01
+    def test_one_revolution_is_one_circumference(self):
+        """CPR ticks move the wheel by exactly one circumference."""
+        self.assertAlmostEqual(
+            odometry.ticks_to_metres(odometry.CPR),
+            2 * math.pi * odometry.WHEEL_RADIUS)
 
-    def _tick_to_metres(self, ticks: int) -> float:
-        return (ticks / self.CPR) * (2 * math.pi * self.WHEEL_RADIUS)
+    def test_no_ticks_no_movement(self):
+        """Without ticks the pose stays as it is."""
+        self.assertEqual(odometry.integrate(1.0, 2.0, 0.5, 0, 0),
+                         (1.0, 2.0, 0.5))
 
     def test_straight_forward(self):
-        """Equal ticks on both wheels → straight line, theta unchanged."""
-        ticks = 100
-        d = self._tick_to_metres(ticks)
-        delta_dist = d
-        delta_theta = 0.0
-        self.assertAlmostEqual(delta_theta, 0.0, places=6)
-        self.assertGreater(delta_dist, 0.0)
+        """Equal ticks on both wheels: straight line along x, theta unchanged."""
+        x, y, theta = odometry.integrate(0.0, 0.0, 0.0, 100, 100)
+        self.assertAlmostEqual(x, odometry.ticks_to_metres(100))
+        self.assertAlmostEqual(y, 0.0)
+        self.assertAlmostEqual(theta, 0.0)
+
+    def test_straight_along_heading(self):
+        """With a heading of 90 degrees the robot moves along y."""
+        x, y, theta = odometry.integrate(0.0, 0.0, math.pi / 2, 100, 100)
+        self.assertAlmostEqual(x, 0.0)
+        self.assertAlmostEqual(y, odometry.ticks_to_metres(100))
+        self.assertAlmostEqual(theta, math.pi / 2)
+
+    def test_backwards(self):
+        """Negative ticks move the robot backwards."""
+        x, _y, _theta = odometry.integrate(0.0, 0.0, 0.0, -100, -100)
+        self.assertAlmostEqual(x, -odometry.ticks_to_metres(100))
 
     def test_spin_in_place(self):
-        """Equal but opposite ticks → pure rotation, no translation."""
-        ticks = 100
-        d = self._tick_to_metres(ticks)
-        delta_dist = (d + (-d)) / 2.0
-        delta_theta = (d - (-d)) / self.WHEELTRACK
-        self.assertAlmostEqual(delta_dist, 0.0, places=6)
-        self.assertNotEqual(delta_theta, 0.0)
+        """Equal but opposite ticks: pure rotation, no translation."""
+        x, y, theta = odometry.integrate(0.0, 0.0, 0.0, -100, 100)
+        self.assertAlmostEqual(x, 0.0)
+        self.assertAlmostEqual(y, 0.0)
+        expected = 2 * odometry.ticks_to_metres(100) / odometry.WHEELTRACK
+        self.assertAlmostEqual(theta, expected)
+
+    def test_left_turn_is_positive(self):
+        """A faster right wheel turns the robot to the left (theta grows)."""
+        _x, y, theta = odometry.integrate(0.0, 0.0, 0.0, 50, 100)
+        self.assertGreater(theta, 0.0)
+        self.assertGreater(y, 0.0)
 
     def test_theta_normalisation(self):
-        """Angle wraps correctly into [-π, π]."""
-        theta = 3 * math.pi  # > π
-        normalised = (theta + math.pi) % (2 * math.pi) - math.pi
-        self.assertGreaterEqual(normalised, -math.pi)
-        self.assertLessEqual(normalised, math.pi)
+        """Angles are wrapped into [-pi, pi)."""
+        self.assertAlmostEqual(odometry.normalise_angle(3 * math.pi), -math.pi)
+        self.assertAlmostEqual(odometry.normalise_angle(-3 * math.pi), -math.pi)
+        self.assertAlmostEqual(odometry.normalise_angle(0.25), 0.25)
+        for theta in (-10.0, -math.pi, 0.0, math.pi, 10.0):
+            wrapped = odometry.normalise_angle(theta)
+            self.assertGreaterEqual(wrapped, -math.pi)
+            self.assertLess(wrapped, math.pi)
 
-    def test_map_boundary_clamp(self):
-        """Position is clamped to map bounds."""
-        x = 99999.0
-        clamped = max(0.0, min(self.MAP_SIZE - 1, x))
-        self.assertEqual(clamped, self.MAP_SIZE - 1)
-
-        x = -500.0
-        clamped = max(0.0, min(self.MAP_SIZE - 1, x))
-        self.assertEqual(clamped, 0.0)
-
-    def test_cell_to_metres_conversion(self):
-        """Centre cell maps to (0, 0) in metric space."""
-        centre_cell = self.MAP_SIZE / 2.0
-        origin_offset = -self.MAP_SIZE * self.RESOLUTION / 2.0
-        x_metres = origin_offset + centre_cell * self.RESOLUTION
-        self.assertAlmostEqual(x_metres, 0.0, places=6)
+    def test_full_circle_returns_to_start(self):
+        """Many small steps on a circle end where they started."""
+        # Ticks per step for the inner (left) and outer (right) wheel.
+        left, right = 10, 20
+        step_theta = (odometry.ticks_to_metres(right - left)
+                      / odometry.WHEELTRACK)
+        steps = round(2 * math.pi / step_theta)
+        x = y = theta = 0.0
+        for _ in range(steps):
+            x, y, theta = odometry.integrate(x, y, theta, left, right)
+        # The circle does not close exactly because steps is rounded.
+        self.assertAlmostEqual(x, 0.0, delta=0.01)
+        self.assertAlmostEqual(y, 0.0, delta=0.01)
 
 
 class TestPathPoints(unittest.TestCase):
-    """Tests for the incremental path-point list (performance fix)."""
+    """Tests for the incremental path-point list used by path_node."""
 
     def setUp(self):
         self.map_data = np.full((10, 10), -1, dtype=np.int8)
         self.path_points: list = []
 
     def _mark(self, x: int, y: int):
+        # Same logic as PathMappingNode._update_map
         if self.map_data[y, x] != 100:
             self.map_data[y, x] = 100
             self.path_points.append((x, y))
