@@ -10,6 +10,7 @@ can display them without being flooded by recurring sensor messages.
 
 import rclpy
 from rclpy.exceptions import InvalidHandle
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -52,8 +53,12 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except ExternalShutdownException:
+        pass
     finally:
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

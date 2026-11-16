@@ -13,6 +13,7 @@ Subscribes:
 
 import rclpy
 from geometry_msgs.msg import Pose, TransformStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 import tf2_ros
 
@@ -47,9 +48,13 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except ExternalShutdownException:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

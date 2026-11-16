@@ -18,6 +18,7 @@ ROS Parameters:
 """
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Int32MultiArray
 import serial
@@ -106,10 +107,14 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
+    except ExternalShutdownException:
+        pass
     finally:
         if node is not None:
             node.close()
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

@@ -28,6 +28,7 @@ import struct
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Int16MultiArray, Int8
 import serial
@@ -165,13 +166,17 @@ def main(args=None):
         node = Motors(log_publisher)
         rclpy.spin(node)
     except KeyboardInterrupt:
-        if node is not None:
-            node._send_to_arduino(0, 0, CTRL_NORMAL)
         log_publisher.log("Node interrupted by user.")
+    except ExternalShutdownException:
+        pass
     finally:
         if node is not None:
+            # Stop the motors however the node ends, not only on Ctrl+C.
+            node._send_to_arduino(0, 0, CTRL_NORMAL)
             node.close()
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

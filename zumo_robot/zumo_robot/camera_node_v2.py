@@ -16,6 +16,7 @@ unfiltered weighted centroid, not the Kalman estimate.
 """
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Image
@@ -154,10 +155,14 @@ def main(args=None):
         log_publisher.log(str(e), level="error")
     except KeyboardInterrupt:
         log_publisher.log("Node interrupted by user.")
+    except ExternalShutdownException:
+        pass
     finally:
         if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        # Ctrl+C has already shut the context down; a plain rclpy.shutdown()
+        # would then raise.
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
