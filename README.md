@@ -218,7 +218,7 @@ All multi-byte values are little-endian signed integers.
 
 ## Known limitations
 
-- **No command timeout.** The robot only stops on an explicit stop command. If the camera finds no line, or the PC side stops (node crash, USB cable pulled), no new command arrives and the Arduino keeps driving at the last commanded speed. Use the **Stop** button (`robot_command` `0`) or cut the power.
+- **The safety stop is a timeout only.** The Arduino stops the motors when no valid packet arrives for 500 ms, for example when the camera loses the line, a node crashes or the USB cable is pulled. It cannot tell a lost line from a dead PC, and the robot starts again as soon as commands arrive.
 - **The camera index is fixed.** The camera node opens video device 0.
 - **Odometry constants are nominal.** `CPR` and `WHEEL_RADIUS` have not been calibrated on the robot (see [Calibration](#calibration)), so distances in the map are approximate.
 - **Encoder data follows the motor commands.** The Arduino only replies with encoder values to motor packets, so the odometry rate follows the camera and pauses while no line is detected.
