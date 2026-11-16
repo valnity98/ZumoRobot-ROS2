@@ -18,8 +18,10 @@ from std_msgs.msg import String
 class LogPublisher(Node):
     """ROS 2 node that forwards important log messages to a GUI topic."""
 
-    def __init__(self) -> None:
-        super().__init__('log_node')
+    def __init__(self, node_name: str = 'log_node') -> None:
+        # Every process creates its own LogPublisher. A distinct name per
+        # process keeps the names in `ros2 node list` unique.
+        super().__init__(node_name)
         self.publisher = self.create_publisher(String, 'log_messages', 10)
 
     def log(self, message: str, level: str = 'info') -> None:

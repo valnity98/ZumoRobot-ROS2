@@ -18,6 +18,7 @@ Publishes:
 """
 
 import math
+import time
 
 import numpy as np
 import rclpy
@@ -37,6 +38,11 @@ MAP_SIZE = 1000          # cells
 RESOLUTION = 0.01        # metres per cell
 
 CMD_RESET = 2            # robot_command value "reset" (see motors_node)
+
+# The map has one million cells. Publishing it with every encoder packet costs
+# far more than the pose update, so the map and the path marker are sent at
+# most this often (in seconds). The pose is still published with every packet.
+MAP_PUBLISH_PERIOD = 0.5
 
 
 class PathMappingNode(Node):
@@ -66,6 +72,7 @@ class PathMappingNode(Node):
         self.prev_left = 0
         self.prev_right = 0
         self._rebase = False  # see command_callback
+        self._last_map_publish = 0.0
 
         # Ordered list of visited cells — avoids O(N²) argwhere on every tick
         self._path_points: list[tuple[int, int]] = []
@@ -95,8 +102,7 @@ class PathMappingNode(Node):
         self._path_points.clear()
 
         self._publish_position()
-        self._publish_map()
-        self._visualize_path()
+        self._publish_map_and_path()
 
     def encoder_callback(self, msg):
         if len(msg.data) != 2:
@@ -138,8 +144,8 @@ class PathMappingNode(Node):
 
         self._update_map(self.current_position[0], self.current_position[1])
         self._publish_position()
-        self._publish_map()
-        self._visualize_path()
+        if time.monotonic() - self._last_map_publish >= MAP_PUBLISH_PERIOD:
+            self._publish_map_and_path()
 
     def _update_map(self, x: float, y: float) -> None:
         xi = max(0, min(MAP_SIZE - 1, int(x)))
@@ -147,6 +153,11 @@ class PathMappingNode(Node):
         if self.map_data[yi, xi] != 100:
             self.map_data[yi, xi] = 100
             self._path_points.append((xi, yi))
+
+    def _publish_map_and_path(self):
+        self._last_map_publish = time.monotonic()
+        self._publish_map()
+        self._visualize_path()
 
     def _publish_position(self):
         pose = Pose()
@@ -198,7 +209,7 @@ class PathMappingNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    log_publisher = LogPublisher()
+    log_publisher = LogPublisher('path_mapping_log')
     node = PathMappingNode(log_publisher)
     try:
         rclpy.spin(node)

@@ -146,7 +146,7 @@ class CameraNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    log_publisher = LogPublisher()
+    log_publisher = LogPublisher('camera_log')
     node = None
     try:
         node = CameraNode(log_publisher)

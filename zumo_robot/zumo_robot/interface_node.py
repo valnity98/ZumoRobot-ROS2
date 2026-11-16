@@ -293,7 +293,7 @@ def main():
     rclpy.init()
     try:
         node = Node("interface_node")
-        log_publisher = LogPublisher()
+        log_publisher = LogPublisher('interface_log')
         app = QApplication(sys.argv)
         window = MainWindow(node, log_publisher)
         window.show()

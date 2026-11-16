@@ -104,7 +104,7 @@ class Encoder(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    log_publisher = LogPublisher()
+    log_publisher = LogPublisher('encoder_log')
     node = None
     try:
         node = Encoder(log_publisher)

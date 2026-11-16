@@ -160,7 +160,7 @@ class Motors(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    log_publisher = LogPublisher()
+    log_publisher = LogPublisher('motors_log')
     node = None
     try:
         node = Motors(log_publisher)
