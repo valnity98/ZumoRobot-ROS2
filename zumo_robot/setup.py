@@ -19,7 +19,7 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Mutasem Bader',
-    maintainer_email='mutasem.bader@stud.fra-uas.de',
+    maintainer_email='m.bader98@outlook.de',
     description=(
         'Camera-based line-following and path-mapping for the Zumo robot '
         'using ROS 2, OpenCV, PID control, and PyQt5 GUI.'

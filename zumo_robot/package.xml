@@ -8,7 +8,7 @@
     ROS 2.  Includes OpenCV-based line detection, PID motor control over
     serial, dead-reckoning odometry, TF2 broadcasting, and a PyQt5 GUI.
   </description>
-  <maintainer email="mutasem.bader@stud.fra-uas.de">Mutasem Bader</maintainer>
+  <maintainer email="m.bader98@outlook.de">Mutasem Bader</maintainer>
   <license>Proprietary</license>
 
   <!-- ROS packages -->
