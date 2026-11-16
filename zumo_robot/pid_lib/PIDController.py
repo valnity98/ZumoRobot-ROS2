@@ -35,8 +35,9 @@ class Zumo328PPID:
 
         self._left_speed = 0.0
         self._right_speed = 0.0
-        self._prev_time = time.time()
-        self._last_error = 0.0
+        # monotonic(): not affected by changes of the system clock
+        self._prev_time = time.monotonic()
+        self._last_error = None  # None: no previous sample yet
         self._integral = 0.0
         self._filtered_derivative = 0.0
         self._filter_coefficient = 0.1
@@ -46,7 +47,7 @@ class Zumo328PPID:
         error = float(measured_position - target_position)
 
         if self.active:
-            curr_time = time.time()
+            curr_time = time.monotonic()
             delta_t = curr_time - self._prev_time
             if delta_t <= 0.0:
                 delta_t = 1e-6
@@ -59,7 +60,12 @@ class Zumo328PPID:
             self._integral = 0.0
             self._filtered_derivative = 0.0  # prevent derivative spike on re-enable
 
-        raw_derivative = (error - self._last_error) / delta_t
+        if self._last_error is None:
+            # First sample after construction or reset(): there is no
+            # previous error, so the derivative would only be a spike.
+            raw_derivative = 0.0
+        else:
+            raw_derivative = (error - self._last_error) / delta_t
         self._filtered_derivative += self._filter_coefficient * (
             raw_derivative - self._filtered_derivative)
 
@@ -90,5 +96,5 @@ class Zumo328PPID:
         """Reset integrator and derivative state."""
         self._integral = 0.0
         self._filtered_derivative = 0.0
-        self._last_error = 0.0
-        self._prev_time = time.time()
+        self._last_error = None
+        self._prev_time = time.monotonic()
