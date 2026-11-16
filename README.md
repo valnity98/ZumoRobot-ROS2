@@ -100,10 +100,10 @@ source install/setup.bash
 
 ### 3. Flash the Arduino firmware
 
-1. Clone [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library) and open `Zumo328P-Library/example/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
-2. Install library dependencies via Library Manager: **Zumo32U4** (used by the sketch on the ATmega32U4) and **FastGPIO**. **ZumoShield** is only needed when building for an ATmega328P.
-3. Copy its `library/` folder into your Arduino `libraries/` folder.
-4. Flash to the Arduino Leonardo connected to the Zumo Shield.
+1. Clone [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library), copy its `library/` folder into your Arduino `libraries/` folder and rename it to `Zumo328P`.
+2. Install the library dependencies via Library Manager: **FastGPIO** and **ZumoShield** (the sketch uses `ZumoMotors` from it).
+3. Open `Zumo328P-Library/examples/ZumoRos2/ZumoRos2.ino` in the Arduino IDE.
+4. Flash it to the Arduino Leonardo connected to the Zumo Shield.
 
 ## Usage
 
@@ -127,6 +127,8 @@ ros2 launch zumo_robot launch_zumo.py serial_port:=/dev/ttyACM0
 ```
 
 An Arduino Leonardo (ATmega32U4) shows up as `/dev/ttyACM0`, a USB-serial adapter as `/dev/ttyUSB0` (the default). Check which one your system created (e.g. with `ls /dev/ttyACM* /dev/ttyUSB*`) and set `serial_port` accordingly.
+
+RViz starts without a saved configuration. Set the fixed frame to `map` and add the displays *TF*, *Map* (topic `path_map`) and *Marker* (topic `visualization_marker`).
 
 ### Start the robot
 
@@ -152,8 +154,8 @@ ros2 run zumo_robot interface_node
 
 The odometry constants at the top of `zumo_robot/zumo_robot/odometry.py` are not measured for every robot. Check `CPR` and `WHEEL_RADIUS` on yours and rebuild after changing them:
 
-- **`CPR`** (encoder counts per wheel revolution, currently `75.81 × 12`): Pololu's 12 CPR applies when both edges of both encoder channels are counted, but the Arduino library only counts the edges of channel A. Send reset (`{data: 2}`), turn one wheel by hand exactly one revolution, send stop once (`{data: 0}`, the Arduino only reports encoder values in reply to motor packets) and read the tick count with `ros2 topic echo /encoder_data`. That count is the value for `CPR`.
-- **`WHEEL_RADIUS`** (currently `0.019` m): with `CPR` calibrated, reset, drive a straight 1 m and compare the distance reported in `robot_position` (metres from the start) with 1 m. Adjust `WHEEL_RADIUS` until they match.
+- **`CPR`** (encoder counts per wheel revolution, currently `75.81 × 6` ≈ 455): Pololu's 12 CPR applies when both edges of both encoder channels are counted, but the Arduino library only counts the edges of channel A, which gives 6 counts per motor revolution. Send reset (`{data: 2}`), turn one wheel by hand exactly one revolution, send stop once (`{data: 0}`, the Arduino only reports encoder values in reply to motor packets) and read the tick count with `ros2 topic echo /encoder_data`. That count is the value for `CPR`.
+- **`WHEEL_RADIUS`** (currently `0.019` m, an estimate from the 39 mm tread height of the Zumo chassis): with `CPR` calibrated, reset, drive a straight 1 m and compare the distance reported in `robot_position` (metres from the start) with 1 m. Adjust `WHEEL_RADIUS` until they match.
 
 ### Tests
 
@@ -217,7 +219,7 @@ All multi-byte values are little-endian signed integers.
 ## Known limitations
 
 - **No command timeout.** The robot only stops on an explicit stop command. If the camera finds no line, or the PC side stops (node crash, USB cable pulled), no new command arrives and the Arduino keeps driving at the last commanded speed. Use the **Stop** button (`robot_command` `0`) or cut the power.
-- **Reverse driving is not verified.** On the ATmega32U4 the sketch drives the motors through `Zumo32U4Motors`, whose direction pins differ from those of the Zumo Shield v1.2 (see the [Zumo328P-Library](https://github.com/valnity98/Zumo328P-Library)). With the default gains the controller practically never commands negative speeds, so this path is not exercised.
+- **The camera index is fixed.** The camera node opens video device 0.
 - **Odometry constants are nominal.** `CPR` and `WHEEL_RADIUS` have not been calibrated on the robot (see [Calibration](#calibration)), so distances in the map are approximate.
 - **Encoder data follows the motor commands.** The Arduino only replies with encoder values to motor packets, so the odometry rate follows the camera and pauses while no line is detected.
 - **The serial protocol has no checksum.** Frames are recognised by their fixed length and the `0x02`/`0x03` markers only.
