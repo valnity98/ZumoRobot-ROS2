@@ -1,50 +1,64 @@
 #!/usr/bin/env python3
-'''
-Qt App Node for ROS 2
-Author: Mutasem Bader
-Description:
-    - This Qt application communicates with a robot using ROS 2.
-    - The app allows sending start/stop commands to control the robot and displays the camera feed from the robot.
-    - The ROS 2 node handles video stream reception, robot control, and communication via serial.
-    - OpenCV and cv_bridge are used to display the video feed in the GUI.
-    - ROS2 communication runs in a separate thread to avoid blocking the GUI event loop.
-Requirements:
-    - ROS 2 installation
-    - serial libraries (`pyserial`)
-    - OpenCV (`cv2`)
-    - PyQt5
-    - cv_bridge (for ROS2 <-> OpenCV image conversion)
-'''
 
+"""
+Qt Interface Node for ROS 2
+Author: Mutasem Bader
+
+Qt dashboard for the Zumo robot: shows the annotated camera image, encoder
+values, motor speeds, the pose and the status log, and sends the start, stop
+and reset commands.
+
+Threading: the ROS 2 node is spun in a background thread so that it does not
+block the Qt event loop. Qt widgets may only be touched from the GUI thread,
+so the ROS callbacks do not update the widgets themselves. They emit Qt
+signals; the connected slots run in the GUI thread.
+
+Subscribes:
+    line_coordinates  (Float32MultiArray)  centroid (x, y) from camera node
+    camera_topic      (Image)              annotated camera frame
+    encoder_data      (Int32MultiArray)    [left_ticks, right_ticks]
+    motor_speeds      (Int16MultiArray)    [left_speed, right_speed]
+    robot_position    (Pose)               pose from path_mapping_node
+    log_messages      (String)             status messages of all nodes
+
+Publishes:
+    robot_command     (Int8)               0=stop, 1=start, 2=reset
+"""
+
+from collections import defaultdict
 import math
 import os
 import sys
-from collections import defaultdict
-from time import time
+from time import monotonic
 
-import rclpy
 from ament_index_python.packages import (
-    PackageNotFoundError, get_package_share_directory)
-from rclpy.node import Node
-
-from std_msgs.msg import Int32MultiArray, Float32MultiArray, Int16MultiArray, String, Int8
-from sensor_msgs.msg import Image
-from geometry_msgs.msg import Pose
-
-from cv_bridge import CvBridge, CvBridgeError
+    get_package_share_directory, PackageNotFoundError)
 import cv2
-
-from PyQt5.QtWidgets import QApplication, QMainWindow
+from cv_bridge import CvBridge, CvBridgeError
+from geometry_msgs.msg import Pose
+from PyQt5 import QtCore, uic
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5 import uic, QtCore
-from PyQt5.QtCore import QVariant
-
+from PyQt5.QtWidgets import QApplication, QMainWindow
+import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from std_msgs.msg import (
+    Float32MultiArray, Int16MultiArray, Int32MultiArray, Int8, String)
 
 from zumo_robot.log_node import LogPublisher
 
+CMD_STOP = 0
+CMD_START = 1
+CMD_RESET = 2
+
+# Minimum time between two updates of the same text field, in seconds
+TEXT_UPDATE_INTERVAL = 0.5
+
 
 def find_ui_file():
-    """Returns the path of zumorobot.ui.
+    """
+    Return the path of zumorobot.ui.
 
     Prefers the installed copy (share/zumo_robot/gui, installed via setup.py)
     and falls back to the source tree if the package is not found in the
@@ -63,34 +77,39 @@ def find_ui_file():
 
 
 class ROS2Thread(QtCore.QThread):
-    """
-    ROS2 Thread class to run the ROS2 node in a background thread
-    to prevent blocking the GUI.
-    """
+    """Spins the ROS 2 node in a background thread."""
+
     def __init__(self, node, log_publisher):
         super().__init__()
         self.node = node
         self.log_publisher = log_publisher
 
     def run(self):
-        """Starts the ROS2 node to process messages in the background."""
         try:
             rclpy.spin(self.node)
-        except rclpy.executors.ExternalShutdownException:
-            self.log_publisher.log("ROS2 Node stopped successfully.")
+        except ExternalShutdownException:
+            pass  # normal end: the window was closed
         except Exception as e:
-            self.log_publisher.log(f"Unexpected error occurred in ROS2 thread: {e}", level="error")
+            self.log_publisher.log(
+                f"Unexpected error occurred in ROS2 thread: {e}", level="error")
+
 
 class MainWindow(QMainWindow):
-    """
-    Main class for the Qt application interface.
-    Handles communication with ROS2, robot control, and video display.
-    """
-    def __init__(self,node, log_publisher):
-        super(MainWindow, self).__init__()
+    """Main window: shows the robot data and sends the robot commands."""
+
+    # Emitted by the ROS callbacks (ROS thread), handled in the GUI thread.
+    encoder_received = QtCore.pyqtSignal(int, int)
+    motor_received = QtCore.pyqtSignal(int, int)
+    pose_received = QtCore.pyqtSignal(float, float, float)
+    line_received = QtCore.pyqtSignal(float, float)
+    frame_received = QtCore.pyqtSignal(QImage)
+    log_received = QtCore.pyqtSignal(str)
+
+    def __init__(self, node, log_publisher):
+        super().__init__()
         self.node = node
         self.log_publisher = log_publisher
-    
+
         # Load the UI file (installed to share/zumo_robot/gui/zumorobot.ui,
         # source copy: zumo_robot/gui/zumorobot.ui)
         ui_path = find_ui_file()
@@ -98,119 +117,147 @@ class MainWindow(QMainWindow):
             uic.loadUi(ui_path, self)
         except Exception as e:
             self.log_publisher.log(f"Error loading UI file: {e}", level="error")
-            raise e
-       
+            raise
 
-        self.publisher = self.node.create_publisher(Int8, 'robot_command', 10)
+        self.bridge = CvBridge()
 
-        self.line_coordinates = self.node.create_subscription(Float32MultiArray,'line_coordinates',self.show_line_coordinates,10)
-        self.video_subscriber = self.node.create_subscription(Image, 'camera_topic', self.show_display_video, 10)
-        self.encoder_subscriber = self.node.create_subscription(Int32MultiArray, 'encoder_data', self.show_encoder_data, 10)
-        self.motor_subscriber = self.node.create_subscription(Int16MultiArray,'motor_speeds',self.show_motor_data,10)
-        self.robot_position_subscriber = self.node.create_subscription(Pose, 'robot_position', self.show_pose_data, 10)
-        self.log_subscriber = self.node.create_subscription(String,'log_messages', self.show_log_message, 10)
+        # Time of the last update per text field, used by the ROS callbacks
+        self.last_update_times = defaultdict(float)
 
-        self.bridge = CvBridge()  # Initialize CvBridge for converting ROS2 image messages to OpenCV images
+        # The emitter lives in the ROS thread and the window in the GUI
+        # thread, so Qt queues these connections automatically.
+        self.encoder_received.connect(self.update_encoder_data)
+        self.motor_received.connect(self.update_motor_data)
+        self.pose_received.connect(self.update_pose_data)
+        self.line_received.connect(self.update_line_coordinates)
+        self.frame_received.connect(self.update_video)
+        self.log_received.connect(self.update_log)
 
-        # Connect GUI buttons to their corresponding functions
         self.Start_PushButton.clicked.connect(self.send_start_command)
         self.Stop_PushButton.clicked.connect(self.send_stop_command)
         self.Reset_PushButton.clicked.connect(self.send_reset_command)
 
-        # Initialize rate limiting for GUI updates
-        self.last_update_times = defaultdict(lambda: 0)
+        self.publisher = self.node.create_publisher(Int8, 'robot_command', 10)
 
-        # Start the ROS2 communication in a background thread to prevent blocking the GUI
+        self.node.create_subscription(
+            Float32MultiArray, 'line_coordinates', self.on_line_coordinates, 10)
+        self.node.create_subscription(
+            Image, 'camera_topic', self.on_camera_image, 10)
+        self.node.create_subscription(
+            Int32MultiArray, 'encoder_data', self.on_encoder_data, 10)
+        self.node.create_subscription(
+            Int16MultiArray, 'motor_speeds', self.on_motor_speeds, 10)
+        self.node.create_subscription(
+            Pose, 'robot_position', self.on_robot_position, 10)
+        self.node.create_subscription(
+            String, 'log_messages', self.on_log_message, 10)
+
         self.ros_thread = ROS2Thread(self.node, self.log_publisher)
+        # Close the window when ROS shuts down from outside (e.g. Ctrl+C in
+        # the terminal that runs the launch file).
+        self.ros_thread.finished.connect(self.close)
         self.ros_thread.start()
 
-    def rate_limit(self, key, interval=0.5):
-        """Checks if the specified interval has passed for the given key."""
-        current_time = time()
+    def rate_limit(self, key, interval=TEXT_UPDATE_INTERVAL):
+        """Return True if `interval` seconds have passed since the last True for `key`."""
+        current_time = monotonic()
         if current_time - self.last_update_times[key] > interval:
             self.last_update_times[key] = current_time
             return True
         return False
-    
-    def show_encoder_data(self, msg):
-        """Updates the GUI with the latest encoder values."""
-        if self.rate_limit("encoder_data", interval=0.5):
-            try:
-                left_encoder, right_encoder = msg.data  # Extract encoder values
-                self.Encoder_Left.setText(f"L: {left_encoder}")
-                self.Encoder_Right.setText(f"R: {right_encoder}")
-            except Exception as e:
-                self.log_publisher.log(f"Error updating encoder data: {e}", level="error")
-                
-    def show_motor_data(self, msg):
-        """Updates the GUI with the latest motor values."""
-        if self.rate_limit("motor_data", interval=0.5):
-            try:
-                speed_left, speed_right = msg.data  # Extract motor value
-                self.Speed_Left.setText(f"L: {speed_left}") 
-                self.Speed_Right.setText(f"R: {speed_right}")  
-            except Exception as e:
-                self.log_publisher.log(f"Error updating speed data: {e}", level="error")
 
-    def show_pose_data(self, msg): 
-        """Updates the GUI with the latest robot position."""
-        if self.rate_limit("pose_data", interval=0.5):
-            try:
-                x = msg.position.x
-                y = msg.position.y
-                z = msg.orientation.z
-                w = msg.orientation.w
-                theta = 2 * math.atan2(z, w)
-                theta_degrees = math.degrees(theta)
-                self.x_position.setText(f"x: {x:.2f}")
-                self.y_position.setText(f"y: {y:.2f}")
-                self.Theta.setText(f"Theta: {theta_degrees:.2f}°")
-            except Exception as e:
-                self.log_publisher.log(f"Error updating pose data: {e}", level="error")
+    # ------------------------------------------------------------------
+    # ROS callbacks. They run in the ROS thread and must not touch widgets.
+    # ------------------------------------------------------------------
 
-    def show_line_coordinates(self, msg):
-        """Updates the GUI with the latest line coordinates."""
-        if self.rate_limit("line_coordinates", interval=0.5):
-            try: 
-                cx, cy = msg.data
-                self.X_Camera.setText(f"cx: {cx:.2f}")
-                self.Y_Camera.setText(f"cy: {cy:.2f}")
-            except Exception as e:
-                self.log_publisher.log(f"Error updating camera coordinates: {e}", level="error")
+    def on_encoder_data(self, msg):
+        if len(msg.data) == 2 and self.rate_limit("encoder_data"):
+            self.encoder_received.emit(msg.data[0], msg.data[1])
 
-    def show_display_video(self, msg):
-            """Handles video stream data from the robot and updates the GUI display."""
-            try:
-                frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")  # Convert the ROS image to OpenCV format
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB format for displaying in the GUI
+    def on_motor_speeds(self, msg):
+        if len(msg.data) == 2 and self.rate_limit("motor_data"):
+            self.motor_received.emit(msg.data[0], msg.data[1])
 
-                # Get image dimensions for creating QImage object
-                height, width, channel = frame.shape
-                bytes_per_line = 3 * width  # 3 bytes per pixel (RGB)
-                # Use bytes() to copy frame data — QImage with raw buffer does
-                # not own the data, so frame must stay alive until fromImage() copies it.
-                q_img = QImage(bytes(frame.tobytes()), width, height,
-                               bytes_per_line, QImage.Format_RGB888)
-                self.Video_Label.setPixmap(QPixmap.fromImage(q_img))
-            except CvBridgeError as e:
-                self.log_publisher.log(f"Error converting ROS image message to OpenCV: {e}", level="error")
-            except Exception as e:
-                self.log_publisher.log(f"Unexpected error displaying video: {e}", level="error")
+    def on_robot_position(self, msg):
+        if self.rate_limit("pose_data"):
+            # Yaw from a quaternion that only rotates about z
+            theta = 2 * math.atan2(msg.orientation.z, msg.orientation.w)
+            self.pose_received.emit(
+                msg.position.x, msg.position.y, math.degrees(theta))
+
+    def on_line_coordinates(self, msg):
+        if len(msg.data) == 2 and self.rate_limit("line_coordinates"):
+            self.line_received.emit(msg.data[0], msg.data[1])
+
+    def on_camera_image(self, msg):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, _channels = frame.shape
+            bytes_per_line = 3 * width  # 3 bytes per pixel (RGB)
+            # A QImage built on a buffer does not own the pixel data.
+            # copy() gives the image its own data, so it stays valid after
+            # `frame` is gone and can be passed to the GUI thread.
+            q_img = QImage(frame.data, width, height, bytes_per_line,
+                           QImage.Format_RGB888).copy()
+            self.frame_received.emit(q_img)
+        except CvBridgeError as e:
+            self.log_publisher.log(
+                f"Error converting ROS image message to OpenCV: {e}",
+                level="error")
+        except Exception as e:
+            self.log_publisher.log(
+                f"Unexpected error displaying video: {e}", level="error")
+
+    def on_log_message(self, msg):
+        self.log_received.emit(msg.data)
+
+    # ------------------------------------------------------------------
+    # Slots. They run in the GUI thread.
+    # ------------------------------------------------------------------
+
+    @QtCore.pyqtSlot(int, int)
+    def update_encoder_data(self, left_encoder, right_encoder):
+        self.Encoder_Left.setText(f"L: {left_encoder}")
+        self.Encoder_Right.setText(f"R: {right_encoder}")
+
+    @QtCore.pyqtSlot(int, int)
+    def update_motor_data(self, speed_left, speed_right):
+        self.Speed_Left.setText(f"L: {speed_left}")
+        self.Speed_Right.setText(f"R: {speed_right}")
+
+    @QtCore.pyqtSlot(float, float, float)
+    def update_pose_data(self, x, y, theta_degrees):
+        self.x_position.setText(f"x: {x:.2f}")
+        self.y_position.setText(f"y: {y:.2f}")
+        self.Theta.setText(f"Theta: {theta_degrees:.2f}°")
+
+    @QtCore.pyqtSlot(float, float)
+    def update_line_coordinates(self, cx, cy):
+        self.X_Camera.setText(f"cx: {cx:.2f}")
+        self.Y_Camera.setText(f"cy: {cy:.2f}")
+
+    @QtCore.pyqtSlot(QImage)
+    def update_video(self, q_img):
+        self.Video_Label.setPixmap(QPixmap.fromImage(q_img))
+
+    @QtCore.pyqtSlot(str)
+    def update_log(self, message):
+        """Append a message to the status log and scroll to the end."""
+        self.plainTextEdit.appendPlainText(message)
+        scroll_bar = self.plainTextEdit.verticalScrollBar()
+        scroll_bar.setValue(scroll_bar.maximum())
 
     def send_start_command(self):
-        """Sends the start command to the robot system."""
-        self._send_robot_command(1)
+        self._send_robot_command(CMD_START)
         self.log_publisher.log("Robot started", level="info")
 
     def send_stop_command(self):
-        """Sends the stop command to the robot system."""
-        self._send_robot_command(0)
+        self._send_robot_command(CMD_STOP)
         self.log_publisher.log("Robot stopped", level="info")
 
-    def send_reset_command (self):
-        """Resets all robot data and GUI values to their default state."""
-   
-        # Beispiel für Reset-Daten
+    def send_reset_command(self):
+        """Clear the displayed values and send the reset command."""
         self.Encoder_Left.setText('L: 0')
         self.Encoder_Right.setText('R: 0')
         self.Speed_Left.setText('L: 0')
@@ -222,63 +269,40 @@ class MainWindow(QMainWindow):
         self.X_Camera.setText('cx: 0.00')
         self.plainTextEdit.setPlainText('')
 
-        self._send_robot_command(2)
+        self._send_robot_command(CMD_RESET)
         self.log_publisher.log('Data reset', level='info')
 
-    def _send_robot_command(self, command: Int8):
-        """Helper function to send commands (start/stop/reset) to the robot via ROS2."""
+    def _send_robot_command(self, command: int):
+        """Publish a command (CMD_STOP, CMD_START or CMD_RESET) on robot_command."""
         try:
-            msg = Int8(data=command)
-            self.publisher.publish(msg)
-        except rclpy.exceptions.RCLException as e:
-            self.log_publisher.log(f"Failed to send robot command due to ROS2 exception: {e}", level="error")
+            self.publisher.publish(Int8(data=command))
         except Exception as e:
-            self.log_publisher.log(f"Unexpected error in sending robot command: {e}", level="error")
-
-    def show_log_message(self, msg: String) -> None:
-        """Appends a new message to the status log."""
-        QtCore.QMetaObject.invokeMethod(
-            self, 'update_log', QtCore.Qt.QueuedConnection,
-            QtCore.Q_ARG(QVariant, QVariant(msg.data)))
-
-    @QtCore.pyqtSlot(QVariant)
-    def update_log(self, message):
-        current_text = self.plainTextEdit.toPlainText()
-        new_text = f"{current_text}\n{message}" if current_text else message
-        self.plainTextEdit.setPlainText(str(new_text))
-        self.plainTextEdit.verticalScrollBar().setValue(self.plainTextEdit.verticalScrollBar().maximum())
-
-
+            self.log_publisher.log(
+                f"Failed to send robot command: {e}", level="error")
 
     def closeEvent(self, event):
-        """Handles cleanup and ROS2 node shutdown when the window is closed."""
-        try:
-            self.node.destroy_node()  # Ensure the node is destroyed properly
-            rclpy.shutdown()  # Shutdown ROS2 gracefully
-            event.accept()
-        except Exception as e:
-            self.log_publisher.log(f"Error during shutdown: {e}", level="error")
-            event.accept()
+        """Stop the ROS thread before the window and the node go away."""
+        # Shutting the context down ends rclpy.spin() in the ROS thread.
+        rclpy.try_shutdown()
+        self.ros_thread.wait(2000)  # milliseconds
+        self.node.destroy_node()
+        event.accept()
+
 
 def main():
-    """Main function to run the Qt application."""
+    rclpy.init()
     try:
-        rclpy.init()  # Initialize ROS2 before creating the app and GUI
-
-        node = Node("interface_node")  # ROS2 Node erstellen
-        log_publisher = LogPublisher()  # Single instance of LogPublisher
+        node = Node("interface_node")
+        log_publisher = LogPublisher()
         app = QApplication(sys.argv)
-        window = MainWindow(node, log_publisher)  # Node an die MainWindow-Klasse übergeben
+        window = MainWindow(node, log_publisher)
         window.show()
-
-        sys.exit(app.exec_())  # Start the Qt event loop
-    except KeyboardInterrupt:
-        log_publisher.log("Node interrupted by user.")
+        exit_code = app.exec_()
     finally:
-        # Guard against double shutdown: closeEvent() already calls rclpy.shutdown()
-        # when the window is closed normally; calling it again raises RuntimeError.
-        if rclpy.ok():
-            rclpy.shutdown()
+        # closeEvent() has already shut the context down when the window was
+        # closed normally; try_shutdown() does nothing in that case.
+        rclpy.try_shutdown()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
