@@ -150,10 +150,19 @@ ros2 run zumo_robot interface_node
 
 ### Calibration
 
-The odometry constants at the top of `zumo_robot/zumo_robot/path_node.py` are not measured for every robot. Check `CPR` and `WHEEL_RADIUS` on yours and rebuild after changing them:
+The odometry constants at the top of `zumo_robot/zumo_robot/odometry.py` are not measured for every robot. Check `CPR` and `WHEEL_RADIUS` on yours and rebuild after changing them:
 
 - **`CPR`** (encoder counts per wheel revolution, currently `75.81 × 12`): Pololu's 12 CPR applies when both edges of both encoder channels are counted, but the Arduino library only counts the edges of channel A. Send reset (`{data: 2}`), turn one wheel by hand exactly one revolution, send stop once (`{data: 0}`, the Arduino only reports encoder values in reply to motor packets) and read the tick count with `ros2 topic echo /encoder_data`. That count is the value for `CPR`.
 - **`WHEEL_RADIUS`** (currently `0.019` m): with `CPR` calibrated, reset, drive a straight 1 m and compare the distance reported in `robot_position` (metres from the start) with 1 m. Adjust `WHEEL_RADIUS` until they match.
+
+### Tests
+
+The PID controller and the odometry maths have unit tests that run without ROS and without the robot:
+
+```bash
+cd zumo_robot
+python3 -m pytest test/test_pid.py test/test_path_node.py
+```
 
 ## ROS 2 Interface
 
