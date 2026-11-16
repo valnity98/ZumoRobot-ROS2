@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
-'''
-ROS2 Serial Communication Node with Arduino
+
+"""
+Manual serial check for the Arduino (not an automated test).
+
 Author: Mutasem Bader
-Description:
-    - This ROS2 node opens a serial connection to an Arduino
-    - Sends commands periodically over serial to control the Arduino (e.g., LED control)
+
+Opens the serial port and sends the character '1' at 100 Hz, e.g. to switch
+an LED with a matching test sketch on the Arduino. Start it by hand:
+
+    python3 test/test_led.py
+
+pytest finds no test in this file; it is only kept as a wiring check.
+
 Requirements:
-    - ROS2 installation
-    - pyserial library installed (pip install pyserial)
-'''
+    - ROS 2 installation
+    - pyserial
+"""
 
 import rclpy
 from rclpy.node import Node
 import serial
 from serial.serialutil import SerialException
 
-class test_led(Node):
+
+class LedTestNode(Node):
+    """Sends '1' to the Arduino periodically."""
+
     def __init__(self):
         super().__init__('test_led')
 
@@ -54,9 +64,10 @@ class test_led(Node):
             self.serial_port.close()
             self.get_logger().info("Serial port closed.")
 
+
 def main(args=None):
     rclpy.init(args=args)
-    node = test_led()
+    node = LedTestNode()
 
     try:
         rclpy.spin(node)
@@ -65,7 +76,8 @@ def main(args=None):
     finally:
         node.close_serial()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
+
 
 if __name__ == '__main__':
     main()
