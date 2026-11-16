@@ -66,25 +66,29 @@ class Encoder(Node):
         if not self.serial_port:
             return
         try:
-            if self.serial_port.in_waiting < PACKET_SIZE:
-                return
+            # The Arduino sends one reply per motor packet. Read every complete
+            # packet that is waiting, not just one per timer tick: otherwise the
+            # replies pile up and the odometry lags behind the robot.
+            while self.serial_port.in_waiting >= PACKET_SIZE:
+                raw = self.serial_port.read(PACKET_SIZE)
+                if len(raw) != PACKET_SIZE or raw[0] != STX or raw[9] != ETX:
+                    self.log_publisher.log(
+                        "Received invalid or incomplete packet.", level="warn")
+                    # Flush buffer to re-sync framing; without this every
+                    # subsequent read stays misaligned and warnings loop forever.
+                    self.serial_port.reset_input_buffer()
+                    return
 
-            raw = self.serial_port.read(PACKET_SIZE)
-            if len(raw) != PACKET_SIZE or raw[0] != STX or raw[9] != ETX:
-                self.log_publisher.log(
-                    "Received invalid or incomplete packet.", level="warn")
-                # Flush buffer to re-sync framing; without this every subsequent
-                # read stays misaligned and warnings loop forever.
-                self.serial_port.reset_input_buffer()
-                return
+                right_enc = int.from_bytes(
+                    raw[1:5], byteorder='little', signed=True)
+                left_enc = int.from_bytes(
+                    raw[5:9], byteorder='little', signed=True)
 
-            right_enc = int.from_bytes(raw[1:5], byteorder='little', signed=True)
-            left_enc = int.from_bytes(raw[5:9], byteorder='little', signed=True)
-
-            msg = Int32MultiArray()
-            msg.data = [left_enc, right_enc]
-            self.publisher_.publish(msg)
-            self.get_logger().debug(f"Encoders — left: {left_enc}, right: {right_enc}")
+                msg = Int32MultiArray()
+                msg.data = [left_enc, right_enc]
+                self.publisher_.publish(msg)
+                self.get_logger().debug(
+                    f"Encoders — left: {left_enc}, right: {right_enc}")
 
         except serial.SerialException as e:
             self.log_publisher.log(f"Serial read error: {e}", level="error")
